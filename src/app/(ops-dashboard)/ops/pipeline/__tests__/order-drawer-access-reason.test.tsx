@@ -2,10 +2,13 @@
  * The ops order drawer opens an order directly (2026-10-30): no "why"
  * prompt. It fetches the detail at once with no access reason; the API
  * logs the open as an order view (detail/__tests__/phi-access-log).
- * Another order fetches its own detail. axe clean.
+ * Another order fetches its own detail. An optional "Emergency access"
+ * control reloads the order with the emergency reason (the API logs it and
+ * alerts Slack, detail/__tests__/emergency-access); it is never asked.
+ * axe clean.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { configureAxe } from 'jest-axe'
 import { OrderDetailDrawer } from '../_components/order-detail-drawer'
 import type { PipelineOrder } from '@/types/pipeline'
@@ -52,6 +55,38 @@ it('another order fetches its own detail', async () => {
   rerender(drawer(order(OTHER)))
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
   expect(fetchMock).toHaveBeenLastCalledWith(`/api/ops/orders/${OTHER}/detail`)
+})
+
+it('Emergency access: reloads the order with the emergency reason, then says it is recorded', async () => {
+  render(drawer(order(ORDER)))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  fireEvent.click(screen.getByRole('button', { name: 'Emergency access' }))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+  expect(fetchMock).toHaveBeenLastCalledWith(`/api/ops/orders/${ORDER}/detail`, { headers: { 'x-ops-access-reason': 'emergency' } })
+  expect(await screen.findByRole('status')).toHaveTextContent(/Emergency access recorded\. It is reviewed within 24 hours/)
+  expect(screen.queryByRole('button', { name: 'Emergency access' })).toBeNull()
+})
+
+it('Emergency access not recorded (503): says so, and the control stays', async () => {
+  render(drawer(order(ORDER)))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  fetchMock.mockImplementationOnce((async () => ({
+    ok: false, status: 503,
+    json: async () => ({ error: 'This emergency access could not be recorded in the audit log, so the order was not opened. Try again.' }),
+  })) as never)
+  fireEvent.click(screen.getByRole('button', { name: 'Emergency access' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent(/could not be recorded/)
+  expect(screen.getByRole('button', { name: 'Emergency access' })).toBeEnabled()
+})
+
+it('another order starts without emergency access', async () => {
+  const { rerender } = render(drawer(order(ORDER)))
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+  fireEvent.click(screen.getByRole('button', { name: 'Emergency access' }))
+  await screen.findByRole('status')
+  rerender(drawer(order(OTHER)))
+  expect(screen.getByRole('button', { name: 'Emergency access' })).toBeInTheDocument()
+  await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith(`/api/ops/orders/${OTHER}/detail`))
 })
 
 it('the drawer is axe clean', async () => {

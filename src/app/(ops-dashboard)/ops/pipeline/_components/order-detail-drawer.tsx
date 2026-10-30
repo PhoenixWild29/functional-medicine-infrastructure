@@ -20,11 +20,19 @@
 // recording the access, not a typed purpose. The detail API still logs
 // every open as an order view in phi_access_log (the order's clinic sees
 // it in their access log), as any order view is logged.
+//
+// Emergency access (break-glass, HIPAA 164.312(a)(2)(ii)) stays in the
+// app as an optional control: "Emergency access" under the header. Used,
+// it reloads the order with the emergency reason in the
+// x-ops-access-reason header, the same path the old prompt used, so the
+// API writes the ops_reason_emergency row (fail closed: 503 if it cannot)
+// and sends the Slack alert. Normal opens send no reason.
 
 import { useState, useEffect } from 'react'
 import type { PipelineOrder } from '@/types/pipeline'
 import { userMessage } from '@/lib/errors/user-message'
 import { TRACKING_PENDING_LABEL, trackingPending } from '@/lib/orders/tracking-pending'
+import { OPS_ACCESS_REASON_HEADER } from '@/lib/audit/ops-access-reason'
 
 // ── Detail types ─────────────────────────────────────────────
 
@@ -102,6 +110,8 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
   const [detailError, setDetailError] = useState<string | null>(null)
   const [activeTab,   setActiveTab]   = useState<'detail' | 'history' | 'submissions' | 'sla'>('detail')
   const [actionLoading, setActionLoading] = useState(false)
+  // Break-glass for this order: not used, being recorded, recorded, or the error.
+  const [emergency, setEmergency] = useState<'idle' | 'recording' | 'recorded' | { error: string }>('idle')
 
   // A different order (or none): reset while rendering, when the order
   // changes (React's pattern for adjusting state to an input); the fetch
@@ -113,6 +123,7 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
     setDetailError(null)
     setDetail(null)
     setIsLoading(orderId !== null)
+    setEmergency('idle')
     if (orderId) setActiveTab('detail')
   }
 
@@ -143,6 +154,23 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
     const res = await fetch(`/api/ops/orders/${order.orderId}/detail`)
     if (res.ok) setDetail(await res.json() as OrderDetail)
     setActionLoading(false)
+  }
+
+  async function markEmergency() {
+    if (!order) return
+    setEmergency('recording')
+    try {
+      const res = await fetch(`/api/ops/orders/${order.orderId}/detail`, { headers: { [OPS_ACCESS_REASON_HEADER]: 'emergency' } })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(err.error ?? `HTTP ${res.status}`)
+      }
+      setDetail(await res.json() as OrderDetail)
+      setDetailError(null)
+      setEmergency('recorded')
+    } catch (err) {
+      setEmergency({ error: userMessage(err, 'Emergency access could not be recorded. Try again.') })
+    }
   }
 
   return (
@@ -179,6 +207,30 @@ export function OrderDetailDrawer({ order, onClose, onAction, currentUserEmail }
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+        </div>
+
+        {/* Emergency access (break-glass): optional, never asked */}
+        <div className="border-b border-border px-5 py-2 text-xs">
+          {emergency === 'recorded' ? (
+            <p role="status" className="rounded-md border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-amber-900 dark:text-amber-300">
+              Emergency access recorded. It is reviewed within 24 hours. Use it only for urgent patient safety, and tell the security officer once it is done.
+            </p>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => { void markEmergency() }}
+                disabled={emergency === 'recording'}
+                className="rounded-md px-1 py-0.5 font-medium text-amber-800 dark:text-amber-300 underline underline-offset-2 hover:text-amber-900 disabled:opacity-50 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {emergency === 'recording' ? 'Recording emergency access…' : 'Emergency access'}
+              </button>
+              <span className="ml-1 text-muted-foreground">(break-glass, urgent patient safety only)</span>
+              {typeof emergency === 'object' && (
+                <p role="alert" className="mt-1 text-red-700 dark:text-red-300">{emergency.error}</p>
+              )}
+            </>
+          )}
         </div>
 
         {/* Tabs */}

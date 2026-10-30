@@ -18,14 +18,16 @@ Do not use it for routine support, billing or curiosity. Those use the normal op
 
 ## How
 
-### Normal ops access (built)
+### Normal ops access, with emergency access in the app (built)
 
 ops_admin already sees every order across clinics, through the ops pipeline. No new privilege was added for emergencies.
 
-Since 2026-10-30 the pipeline drawer no longer asks "Why are you opening this order?" (the owner removed it to reduce friction; HIPAA requires recording each access, not a typed purpose). Opening an order shows it at once, and the open is logged as an order view (see "What is logged").
+Since 2026-10-30 the pipeline drawer no longer asks "Why are you opening this order?" on every open (HIPAA requires recording each access, not a typed purpose). Opening an order shows it at once, and the open is logged as an order view (see "What is logged"). Emergency access stays in the app as an optional control:
 
-1. In **Ops > Pipeline**, open the order.
-2. For an emergency (break-glass) open, the person who used it tells the Security Officer the same day. The drawer no longer sends the emergency reason, so no automatic Slack alert is sent for it; the reviewer finds the view rows in Ops > Access review.
+1. In **Ops > Pipeline**, open the order. For an emergency, use **Emergency access** (break-glass, urgent patient safety only) under the drawer's header.
+2. The order is reloaded with the emergency reason, which is logged with the access. If that cannot be recorded, the order is not shown and ops tries again.
+3. The drawer then shows a notice that the access is reviewed within 24 hours.
+4. The person who used it tells the Security Officer the same day. Ops is also alerted in Slack on every emergency open (see "What is logged"), so the review does not depend on that report.
 
 ### The break-glass account (when no ops_admin can sign in)
 
@@ -35,7 +37,7 @@ Since 2026-10-30 the pipeline drawer no longer asks "Why are you opening this or
 - **Sealed credentials:** Sam holds the password and the TOTP recovery codes, sealed. The seal is a numbered tamper-evident envelope or a password-manager vault entry that logs each open. Sam records the seal number.
 - **To use it:**
   1. Ask Sam, or the person Sam has authorised, to unseal it.
-  2. Sign in. Open only the orders needed. Then sign out.
+  2. Sign in. Open only the orders needed, using Emergency access on each. Then sign out.
 - **After use:**
   - Sam rotates the password and the TOTP secret the same day.
   - Sam reseals with a new seal number.
@@ -45,7 +47,7 @@ The Supabase dashboard and the service-role key are not break-glass paths for re
 
 ## What is logged
 
-Every time ops opens an order in the pipeline drawer (`GET /api/ops/orders/[orderId]/detail`), the view row below is written to `phi_access_log`. The drawer sends no reason since 2026-10-30. The API still accepts an optional reason (`x-ops-access-reason`); when a caller sends one, the reason row is written too:
+Every time ops opens an order in the pipeline drawer (`GET /api/ops/orders/[orderId]/detail`), the view row below is written to `phi_access_log`. A normal open sends no reason. **Emergency access** sends the emergency reason (`x-ops-access-reason: emergency`), and the reason row is written too:
 
 | Row | Resource | Recorded with it |
 |---|---|---|
@@ -56,7 +58,7 @@ Every time ops opens an order in the pipeline drawer (`GET /api/ops/orders/[orde
 - **Missing or unknown reason:** a request without a reason is served and logged as a view. A reason not on the list is refused (400); nothing is read, and nothing is logged.
 - **Emergency fails closed:** if the `ops_reason_emergency` row cannot be written, the order is not returned (503) and ops tries again. For the other reasons, a failed write is alerted (the audit-write alert) and the order is still shown, as for every other read.
 - **Slack alert on every emergency open:** "Emergency (break-glass) access to a patient order", with the code `ops_reason_emergency`, the actor's role and the time. It carries no order, patient, clinic or user id; the reviewer finds the rows in Ops > Access review. A Slack failure is logged and does not block the open.
-- **Scope:** no ops screen asks for a reason. Every ops view of order-linked PHI is logged (the drawer as `order`, the inbound fax queue as `inbound_fax`).
+- **Scope:** no ops screen asks for a reason; the pipeline drawer offers Emergency access as an optional control. Every ops view of order-linked PHI is logged (the drawer as `order`, the inbound fax queue as `inbound_fax`).
 - **Codes only:** the reason is a code, not free text. `phi_access_log` has no reason column, and this change adds no migration. A free-text note needs the design below.
 
 ## Post-event review (within 24 hours)

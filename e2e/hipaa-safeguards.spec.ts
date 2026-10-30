@@ -18,8 +18,8 @@ import { seedStaticData, cleanupTestOrders, TEST_IDS, TEST_USERS } from './fixtu
 //   5. /ops/access-review: ops reads it and filters by date; a clinic user
 //      is refused, page and API.
 //   6. Ops opening an order sees it at once (no "why" prompt, removed
-//      2026-10-30), and the open is still logged as an order view in
-//      phi_access_log.
+//      2026-10-30; an optional Emergency access control remains), and the
+//      open is still logged as an order view in phi_access_log.
 //   7. /help: reachable, and its topics work with the keyboard.
 // Seeded users and the shared test clinic only. Step 6 makes one order
 // row, as ops-dashboard.spec.ts does, and removes it. No card is entered,
@@ -157,6 +157,8 @@ test.describe('HIPAA safeguards', () => {
       await expect(drawer.getByText('Loading…')).toHaveCount(0, { timeout: 15_000 })
       await expect(drawer.getByRole('alert')).toHaveCount(0)
       await expect(drawer.getByText('Why are you opening this order?')).toHaveCount(0)
+      // Break-glass stays available, but is never asked (not clicked here: it alerts Slack).
+      await expect(drawer.getByRole('button', { name: 'Emergency access' })).toBeVisible()
       expect(detailCalls).toHaveLength(1)
 
       // HIPAA audit controls: the open is an order view in the access log.
