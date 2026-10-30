@@ -20,7 +20,8 @@ export interface PracticeDetails {
   postalCode:     string
   phone:          string
   practiceNpi:    string | null
-  taxIdLast4:     string
+  /** Optional: asked for with payouts at launch (Sam, Oct 30). null when blank. */
+  taxIdLast4:     string | null
   absorbShipping: boolean
 }
 
@@ -56,7 +57,9 @@ export function validatePracticeDetails(input: unknown): PracticeValidation {
   if (practiceNpi && !(/^\d{10}$/.test(practiceNpi) && npiChecksumValid(practiceNpi))) {
     errors.practiceNpi = 'That is not a valid NPI (10 digits, with a matching check digit). Leave it blank if the practice has none.'
   }
-  if (!/^\d{4}$/.test(rawTaxId)) {
+  // Optional (needed only for payouts, which come at launch). When given,
+  // it must be exactly the last 4 digits.
+  if (rawTaxId && !/^\d{4}$/.test(rawTaxId)) {
     errors.taxIdLast4 = 'Enter only the last 4 digits of the tax ID, never the whole number.'
   }
 
@@ -73,7 +76,7 @@ export function validatePracticeDetails(input: unknown): PracticeValidation {
       postalCode,
       phone,
       practiceNpi:    practiceNpi || null,
-      taxIdLast4:     rawTaxId,
+      taxIdLast4:     rawTaxId || null,
       absorbShipping: b['absorbShipping'] === true,
     },
   }

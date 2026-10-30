@@ -92,7 +92,7 @@ export function PracticeDetailsForm({ details, canEdit }: { details: PracticeDet
           <TextField id="s-p-zip" label="ZIP code" autoComplete="postal-code" inputMode="numeric" value={v.postalCode} onChange={set('postalCode')} error={errors['postalCode']} required />
           <TextField id="s-p-phone" label="Phone" type="tel" autoComplete="tel" value={v.phone} onChange={set('phone')} error={errors['phone']} required />
           <TextField id="s-p-npi" label="Practice NPI (Type 2, optional)" inputMode="numeric" value={v.practiceNpi} onChange={set('practiceNpi')} error={errors['practiceNpi']} hint="The organization NPI, if the practice has one." />
-          <TextField id="s-p-tax" label="Tax ID (last 4 digits)" inputMode="numeric" maxLength={4} autoComplete="off" value={v.taxIdLast4} onChange={set('taxIdLast4')} error={errors['taxIdLast4']} hint="Only the last 4 digits. Never enter the whole number." required />
+          <TextField id="s-p-tax" label="Tax ID, last 4 digits (optional)" inputMode="numeric" maxLength={4} autoComplete="off" value={v.taxIdLast4} onChange={set('taxIdLast4')} error={errors['taxIdLast4']} hint="Only the last 4 digits. Needed for payouts at launch; you can add it later." />
         </fieldset>
         {saved && <FormAlert tone="success">Practice details saved.</FormAlert>}
         {canEdit && <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>{busy ? 'Saving…' : 'Save practice details'}</button>}

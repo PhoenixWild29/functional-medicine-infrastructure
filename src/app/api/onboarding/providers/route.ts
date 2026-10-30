@@ -30,14 +30,17 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   const s = (k: string) => (typeof body[k] === 'string' ? (body[k] as string).trim() : '')
   const firstName = s('firstName')
   const lastName = s('lastName')
-  const email = cleanEmail(body['email'])
+  // "This is me": the clinic admin is also a prescriber and uses this same
+  // login (as a solo provider does). No email and no invite (Sam, Oct 30).
+  const self = body['self'] === true
+  const email = self ? null : cleanEmail(body['email'])
   const npiNumber = s('npiNumber').replace(/\s/g, '')
   const license = { state: s('licenseState').toUpperCase(), licenseNumber: s('licenseNumber'), expiresOn: s('licenseExpiresOn') }
 
   const errors: Record<string, string> = {}
   if (!NAME_RE.test(firstName)) errors['firstName'] = 'Enter the first name.'
   if (!NAME_RE.test(lastName)) errors['lastName'] = 'Enter the last name.'
-  if (!email) errors['email'] = 'Enter the provider’s email address.'
+  if (!self && !email) errors['email'] = 'Enter the provider’s email address.'
   const npiError = npiProblem(npiNumber)
   if (npiError) errors['npiNumber'] = npiError
   const licErrors = licenseErrors(license, '')
@@ -48,8 +51,13 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   // The provider, their license and the NPI check: the same path as a solo
   // provider's self sign-up (lib/onboarding/provider-record).
+  if (self) {
+    const { data: mine, error: mineErr } = await supabase.from('providers').select('provider_id').eq('clinic_id', clinicId).eq('user_id', user.id).is('deleted_at', null).limit(1)
+    if (mineErr) return NextResponse.json({ error: 'The provider could not be added. Try again.' }, { status: 503 })
+    if ((mine ?? []).length > 0) return NextResponse.json({ error: 'You are already a provider in this practice.' }, { status: 409 })
+  }
   const added = await addProviderRecord(supabase, {
-    clinicId, userId: null, firstName, lastName, npiNumber, licenses: [license], actorId: user.id,
+    clinicId, userId: self ? user.id : null, firstName, lastName, npiNumber, licenses: [license], actorId: user.id,
     // The wizard: the clinic is not approved yet, so it holds no NPI until
     // ops approves (security review M3).
     npiClaimed: false,
@@ -59,6 +67,10 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
   }
   const { provider, npiStatus } = added
 
+  if (self) {
+    await setStep(supabase, clinicId, 'providers', 'in_progress', user.id)
+    return NextResponse.json({ providerId: provider.provider_id, npiStatus, self: true }, { status: 201 })
+  }
   const invite = await createInvite(supabase, { kind: 'provider', clinicId, email: email!, providerId: provider.provider_id, createdBy: user.id, actorRole: 'clinic_admin' })
   await setStep(supabase, clinicId, 'providers', 'in_progress', user.id)
   if (!invite.ok) {

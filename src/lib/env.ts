@@ -91,13 +91,15 @@ export const serverEnv = {
   // Any Vercel deployment: production, preview or vercel dev.
   isVercelDeployment: (): boolean => Boolean(process.env['VERCEL'] || process.env['VERCEL_ENV']),
 
-  // HIPAA automatic logoff: minutes of inactivity before sign-out.
-  // Default 15; anything that is not a positive whole number is 15.
+  // HIPAA automatic logoff (an addressable safeguard; the rule sets no
+  // time): minutes of inactivity before sign-out. Default 30 (Sam, Oct 30:
+  // no stricter than required); anything that is not a positive whole
+  // number is 30.
   idleTimeoutMinutes: (): number => {
     const raw = (process.env['IDLE_TIMEOUT_MINUTES'] ?? '').trim()
-    if (!/^\d+$/.test(raw)) return 15
+    if (!/^\d+$/.test(raw)) return 30
     const minutes = parseInt(raw, 10)
-    return minutes > 0 ? minutes : 15
+    return minutes > 0 ? minutes : 30
   },
 } as const
 

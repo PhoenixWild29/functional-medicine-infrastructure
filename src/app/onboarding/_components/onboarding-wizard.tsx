@@ -4,7 +4,9 @@
 // Clinic onboarding wizard
 // ============================================================
 //
-// Practice → providers → staff → BAA → terms → payouts → review. Progress
+// Practice → providers → staff → agreements (BAA and terms, accepted
+// together) → review. Payouts are hidden until they are live (Sam, Oct 30:
+// no more steps than needed). Progress
 // is stored server-side, so the admin can leave and resume anywhere; the
 // wizard opens at the first step that is not complete. Every save goes
 // to an API route that re-checks the caller and the clinic's state, then
@@ -20,7 +22,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
-import { ONBOARDING_STEPS, STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
+import { STEP_LABELS, NOT_LIVE_STEPS, NOT_LIVE_LABEL, firstOpenStep, isEditable, canSubmit, type StepKey, type StepStatus } from '@/lib/onboarding/steps'
 import { AGREEMENTS, type AgreementKey } from '@/lib/onboarding/agreement-texts'
 import type { OnboardingState } from '@/lib/onboarding/state'
 import { US_STATES } from '@/lib/providers/states'
@@ -30,6 +32,21 @@ import { LegalMarkdown } from '@/components/onboarding/legal-markdown'
 const STATES = [...US_STATES].sort()
 const STATUS_TEXT: Record<StepStatus, string> = { complete: 'Complete', in_progress: 'In progress', not_started: 'Not started' }
 const statusText = (s: StepKey, status: StepStatus) => (NOT_LIVE_STEPS.includes(s) ? NOT_LIVE_LABEL : STATUS_TEXT[status])
+
+// The steps the wizard shows. The BAA and terms are still two acceptances
+// (two records, two step rows), shown as one "Agreements" step; payouts
+// stay out of view until they are live.
+const WIZARD_STEPS: ReadonlyArray<StepKey> = ['practice', 'providers', 'staff', 'baa', 'review']
+const WIZARD_LABELS: Record<StepKey, string> = { ...STEP_LABELS, baa: 'Agreements', terms: 'Agreements' }
+/** The wizard step a stored step is shown under. */
+const shownAs = (s: StepKey): StepKey => (s === 'terms' ? 'baa' : s === 'payouts' ? 'review' : s)
+/** The Agreements step is complete when both acceptances are. */
+function wizardStatus(steps: OnboardingState['steps'], s: StepKey): StepStatus {
+  if (s !== 'baa') return steps[s]
+  const a = steps['baa'], t = steps['terms']
+  if (a === 'complete' && t === 'complete') return 'complete'
+  return a === 'not_started' && t === 'not_started' ? 'not_started' : 'in_progress'
+}
 
 type Errors = Record<string, string>
 
@@ -47,7 +64,7 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
   const router = useRouter()
   const [fresh, setFresh] = useState<OnboardingState | null>(null)
   const state = fresh ?? props.state
-  const [step, setStep] = useState<StepKey>(props.initialStep ?? firstOpenStep(props.state.steps))
+  const [step, setStep] = useState<StepKey>(shownAs(props.initialStep ?? firstOpenStep(props.state.steps)))
   const headingRef = useRef<HTMLHeadingElement>(null)
   const firstRender = useRef(true)
   const readOnly = !isEditable(state.clinic.onboardingStatus)
@@ -57,19 +74,24 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
     headingRef.current?.focus()
   }, [step])
 
-  const go = (s: StepKey) => setStep(s)
+  const go = (s: StepKey) => setStep(shownAs(s))
   const next = () => {
-    const i = ONBOARDING_STEPS.indexOf(step)
-    if (i < ONBOARDING_STEPS.length - 1) setStep(ONBOARDING_STEPS[i + 1]!)
+    const i = WIZARD_STEPS.indexOf(step)
+    if (i >= 0 && i < WIZARD_STEPS.length - 1) setStep(WIZARD_STEPS[i + 1]!)
   }
+  // The wizard's own state first (the step list and the provider and staff
+  // lists update at once), then the server parts of the page (the banner).
+  // Seen once on prod (Oct 29): a just-added provider stayed out of the list
+  // until a reload when the page refresh ran first, so it now runs after.
   async function reload() {
-    router.refresh()
     try {
       const res = await fetch('/api/onboarding/state', { cache: 'no-store' })
-      if (!res.ok) return
-      const data = await res.json() as Partial<OnboardingState>
-      if (data.clinic && data.steps && Array.isArray(data.providers) && Array.isArray(data.staff) && data.acceptances) setFresh(data as OnboardingState)
+      if (res.ok) {
+        const data = await res.json() as Partial<OnboardingState>
+        if (data.clinic && data.steps && Array.isArray(data.providers) && Array.isArray(data.staff) && data.acceptances) setFresh(data as OnboardingState)
+      }
     } catch { /* keep what is shown */ }
+    router.refresh()
   }
   const refresh = () => { void reload() }
 
@@ -101,7 +123,7 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
       <div className="grid gap-6 md:grid-cols-[16rem_1fr]">
         <nav aria-label="Onboarding steps">
           <ol className="space-y-1">
-            {ONBOARDING_STEPS.map((s, i) => (
+            {WIZARD_STEPS.map((s, i) => (
               <li key={s}>
                 <button
                   type="button"
@@ -109,9 +131,9 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
                   aria-current={s === step ? 'step' : undefined}
                   className={`flex w-full min-h-[44px] items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring ${s === step ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted'}`}
                 >
-                  <span><span className="sr-only">Step {i + 1}: </span>{STEP_LABELS[s]}</span>
-                  <span className={`text-xs ${s === step ? 'text-primary-foreground' : state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-600'}`}>
-                    {statusText(s, state.steps[s])}
+                  <span><span className="sr-only">Step {i + 1}: </span>{WIZARD_LABELS[s]}</span>
+                  <span className={`text-xs ${s === step ? 'text-primary-foreground' : wizardStatus(state.steps, s) === 'complete' ? 'text-emerald-800' : 'text-slate-600'}`}>
+                    {statusText(s, wizardStatus(state.steps, s))}
                   </span>
                 </button>
               </li>
@@ -121,15 +143,13 @@ export function OnboardingWizard(props: { state: OnboardingState; initialStep?: 
 
         <section aria-labelledby="step-heading" className="rounded-lg border border-border bg-card p-4 sm:p-6">
           <h2 id="step-heading" ref={headingRef} tabIndex={-1} className="text-lg font-semibold text-foreground focus-visible:outline-hidden">
-            {STEP_LABELS[step]}
+            {WIZARD_LABELS[step]}
           </h2>
           <div className="mt-4">
             {step === 'practice'  && <PracticeStep state={state} readOnly={readOnly} onSaved={() => { refresh(); next() }} />}
             {step === 'providers' && <ProvidersStep state={state} readOnly={readOnly} onChanged={refresh} onDone={() => { refresh(); next() }} />}
             {step === 'staff'     && <StaffStep state={state} readOnly={readOnly} onChanged={refresh} onDone={() => { refresh(); next() }} />}
-            {step === 'baa'       && <AgreementStep agreement="baa" state={state} readOnly={readOnly} onAccepted={() => { refresh(); next() }} />}
-            {step === 'terms'     && <AgreementStep agreement="terms" state={state} readOnly={readOnly} onAccepted={() => { refresh(); next() }} />}
-            {step === 'payouts'   && <PayoutsStep readOnly={readOnly} onNext={next} />}
+            {step === 'baa'       && <AgreementsStep state={state} readOnly={readOnly} onAccepted={() => { refresh(); next() }} />}
             {step === 'review'    && <ReviewStep state={state} readOnly={readOnly} onGo={go} onSubmitted={refresh} />}
           </div>
         </section>
@@ -185,7 +205,7 @@ function PracticeStep({ state, readOnly, onSaved }: { state: OnboardingState; re
         <TextField id="p-zip" label="ZIP code" autoComplete="postal-code" inputMode="numeric" value={v.postalCode} onChange={set('postalCode')} error={errors['postalCode']} required />
         <TextField id="p-phone" label="Phone" type="tel" autoComplete="tel" value={v.phone} onChange={set('phone')} error={errors['phone']} required />
         <TextField id="p-npi" label="Practice NPI (Type 2, optional)" inputMode="numeric" value={v.practiceNpi} onChange={set('practiceNpi')} error={errors['practiceNpi']} hint="The organization NPI, if the practice has one." />
-        <TextField id="p-tax" label="Tax ID (last 4 digits)" inputMode="numeric" maxLength={4} autoComplete="off" value={v.taxIdLast4} onChange={set('taxIdLast4')} error={errors['taxIdLast4']} hint="Only the last 4 digits. Never enter the whole number." required />
+        <TextField id="p-tax" label="Tax ID, last 4 digits (optional)" inputMode="numeric" maxLength={4} autoComplete="off" value={v.taxIdLast4} onChange={set('taxIdLast4')} error={errors['taxIdLast4']} hint="Only the last 4 digits. Needed for payouts at launch; you can add it later." />
         <div className="sm:col-span-2">
           <CheckboxField id="p-ship" label="The clinic pays for shipping" hint="If unchecked, shipping is added to the patient's payment." checked={v.absorbShipping} onChange={e => setV(prev => ({ ...prev, absorbShipping: e.target.checked }))} />
         </div>
@@ -205,12 +225,14 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
   const [msg, setMsg] = useState<string | null>(null)
   const [link, setLink] = useState<{ link: string; email: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  // "This is me": the admin also prescribes, with this same login.
+  const [self, setSelf] = useState(false)
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV(prev => ({ ...prev, [k]: e.target.value }))
 
   async function add(e: FormEvent) {
     e.preventDefault()
     setBusy(true); setMsg(null); setLink(null)
-    const r = await send('/api/onboarding/providers', 'POST', v)
+    const r = await send('/api/onboarding/providers', 'POST', self ? { ...v, email: '', self: true } : v)
     setBusy(false)
     if (!r.ok) {
       setErrors((r.data['errors'] as Errors | undefined) ?? {})
@@ -221,6 +243,7 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
     if (typeof r.data['link'] === 'string') setLink({ link: r.data['link'], email: v.email.trim().toLowerCase() })
     else if (typeof r.data['error'] === 'string') setMsg(r.data['error'])
     setV(EMPTY_PROVIDER)
+    setSelf(false)
     onChanged()
   }
 
@@ -255,7 +278,10 @@ function ProvidersStep({ state, readOnly, onChanged, onDone }: { state: Onboardi
             <legend className="sr-only">New provider</legend>
             <TextField id="np-first" label="First name" autoComplete="off" value={v.firstName} onChange={set('firstName')} error={errors['firstName']} required />
             <TextField id="np-last" label="Last name" autoComplete="off" value={v.lastName} onChange={set('lastName')} error={errors['lastName']} required />
-            <div className="sm:col-span-2"><TextField id="np-email" label="Email" type="email" autoComplete="off" value={v.email} onChange={set('email')} error={errors['email']} hint="Their invite is for this address." required /></div>
+            <div className="sm:col-span-2">
+              <CheckboxField id="np-self" label="This is me: I also prescribe, with this login (no invite needed)" checked={self} onChange={e => setSelf(e.target.checked)} />
+            </div>
+            {!self && <div className="sm:col-span-2"><TextField id="np-email" label="Email" type="email" autoComplete="off" value={v.email} onChange={set('email')} error={errors['email']} hint="Their invite is for this address." required /></div>}
             <TextField id="np-npi" label="NPI" inputMode="numeric" value={v.npiNumber} onChange={set('npiNumber')} error={errors['npiNumber']} required />
             <SelectField id="np-state" label="License state" value={v.licenseState} onChange={set('licenseState')} error={errors['licenseState']} required>
               <option value="">Choose a state</option>
@@ -310,7 +336,7 @@ function ProviderCard({ provider: p, readOnly, onChanged }: { provider: Onboardi
         Licenses: {p.licenses.length ? p.licenses.map(l => `${l.state} ${l.licenseNumber} (expires ${l.expiresOn})`).join('; ') : 'none yet'}
       </p>
       <p className="mt-1 text-sm text-slate-700">
-        Invite: {p.invite ? `${p.invite.email} · ${inviteLabel(p.invite.status)}` : 'none'}
+        Invite: {p.invite ? `${p.invite.email} · ${inviteLabel(p.invite.status)}` : p.hasLogin ? 'not needed (uses an existing login)' : 'none'}
       </p>
       {msg && <div className="mt-3"><FormAlert>{msg}</FormAlert></div>}
       {link && p.invite && <div className="mt-3"><InviteLink link={link} email={p.invite.email} subject="Your CompoundIQ provider invite" idPrefix={`${base}-invite`} /></div>}
@@ -425,13 +451,13 @@ function StaffStep({ state, readOnly, onChanged, onDone }: { state: OnboardingSt
 
 // ── BAA / terms ──────────────────────────────────────────────
 
-function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: AgreementKey; state: OnboardingState; readOnly: boolean; onAccepted: () => void }) {
-  const a = AGREEMENTS[agreement]
-  const accepted = state.acceptances[agreement]
-  const current = accepted?.version === a.version
+function AgreementsStep({ state, readOnly, onAccepted }: { state: OnboardingState; readOnly: boolean; onAccepted: () => void }) {
+  const KEYS: AgreementKey[] = ['baa', 'terms']
+  const isCurrent = (k: AgreementKey) => state.acceptances[k]?.version === AGREEMENTS[k].version
+  const open = KEYS.filter(k => !isCurrent(k))
   const [signerName, setSignerName] = useState('')
   const [signerTitle, setSignerTitle] = useState('')
-  const [agree, setAgree] = useState(false)
+  const [agree, setAgree] = useState<Record<AgreementKey, boolean>>({ baa: false, terms: false } as Record<AgreementKey, boolean>)
   const [errors, setErrors] = useState<Errors>({})
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -441,80 +467,72 @@ function AgreementStep({ agreement, state, readOnly, onAccepted }: { agreement: 
     const local: Errors = {}
     if (!signerName.trim()) local['signerName'] = 'Enter your full name.'
     if (!signerTitle.trim()) local['signerTitle'] = 'Enter your title.'
-    if (!agree) local['agree'] = 'Confirm that you have read and agree.'
+    for (const k of open) if (!agree[k]) local[`agree-${k}`] = 'Confirm that you have read and agree.'
     setErrors(local)
     setMsg(null)
     if (Object.keys(local).length > 0) return
     setBusy(true)
-    const r = await send('/api/onboarding/agreements', 'POST', { agreement, version: a.version, signerName: signerName.trim(), signerTitle: signerTitle.trim() })
-    setBusy(false)
-    if (!r.ok) {
-      setErrors((r.data['errors'] as Errors | undefined) ?? {})
-      setMsg((r.data['error'] as string | undefined) ?? 'Your acceptance could not be recorded.')
-      return
+    // Two acceptances, each recorded with its own version (as before),
+    // from one form.
+    for (const k of open) {
+      const r = await send('/api/onboarding/agreements', 'POST', { agreement: k, version: AGREEMENTS[k].version, signerName: signerName.trim(), signerTitle: signerTitle.trim() })
+      if (!r.ok) {
+        setBusy(false)
+        setErrors((r.data['errors'] as Errors | undefined) ?? {})
+        setMsg((r.data['error'] as string | undefined) ?? 'Your acceptance could not be recorded.')
+        onAccepted()
+        return
+      }
     }
+    setBusy(false)
     onAccepted()
   }
 
   return (
-    <div className="space-y-5">
-      <h3 className="text-base font-semibold text-foreground">{a.title} <span className="font-normal text-slate-700">(version {a.version})</span></h3>
-      <div
-        tabIndex={0}
-        role="region"
-        aria-label={`${a.title} text`}
-        className="max-h-80 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <LegalMarkdown text={a.text} headingLevel={4} />
-      </div>
+    <div className="space-y-6">
+      {KEYS.map(k => {
+        const a = AGREEMENTS[k]
+        const accepted = state.acceptances[k]
+        return (
+          <div key={k} className="space-y-3">
+            <h3 className="text-base font-semibold text-foreground">{a.title} <span className="font-normal text-slate-700">(version {a.version})</span></h3>
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label={`${a.title} text`}
+              className="max-h-64 space-y-3 overflow-y-auto rounded-lg border border-slate-500 bg-background p-4 text-sm leading-relaxed text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <LegalMarkdown text={a.text} headingLevel={4} />
+            </div>
+            {accepted && isCurrent(k) && (
+              <FormAlert tone="success">
+                Accepted by {accepted.signerName}, {accepted.signerTitle}, on {new Date(accepted.acceptedAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.
+              </FormAlert>
+            )}
+            {accepted && !isCurrent(k) && <FormAlert tone="info">This agreement has changed since it was accepted. Please review and accept the current version.</FormAlert>}
+          </div>
+        )
+      })}
 
-      {accepted && current ? (
-        <FormAlert tone="success">
-          Accepted by {accepted.signerName}, {accepted.signerTitle}, on {new Date(accepted.acceptedAt).toLocaleDateString('en-US', { dateStyle: 'long' })}.
-        </FormAlert>
-      ) : (
-        <>
-          {accepted && !current && <FormAlert tone="info">This agreement has changed since it was accepted. Please review and accept the current version.</FormAlert>}
-          {msg && <FormAlert>{msg}</FormAlert>}
-          {!readOnly && (
-            <form onSubmit={onSubmit} noValidate className="space-y-4">
-              <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
-                <legend className="sr-only">Accept the {a.title}</legend>
-                <TextField id={`${agreement}-name`} label="Signer name" autoComplete="name" value={signerName} onChange={e => setSignerName(e.target.value)} error={errors['signerName']} required />
-                <TextField id={`${agreement}-title`} label="Title" autoComplete="organization-title" value={signerTitle} onChange={e => setSignerTitle(e.target.value)} error={errors['signerTitle']} required />
-                <div className="sm:col-span-2 space-y-1">
-                  <CheckboxField id={`${agreement}-agree`} label={`I have read the ${a.title} and agree to it on behalf of the practice.`} checked={agree} onChange={e => setAgree(e.target.checked)} aria-invalid={errors['agree'] ? true : undefined} aria-describedby={errors['agree'] ? `${agreement}-agree-error` : undefined} />
-                  {errors['agree'] && <p id={`${agreement}-agree-error`} role="alert" className="text-sm text-red-700">{errors['agree']}</p>}
-                </div>
-              </fieldset>
-              <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>{busy ? 'Recording…' : `Accept the ${a.title}`}</button>
-            </form>
-          )}
-        </>
+      {msg && <FormAlert>{msg}</FormAlert>}
+      {!readOnly && open.length > 0 && (
+        <form onSubmit={onSubmit} noValidate className="space-y-4">
+          <fieldset disabled={busy} className="grid gap-4 sm:grid-cols-2">
+            <legend className="sr-only">Accept the agreements</legend>
+            <TextField id="agreements-name" label="Signer name" autoComplete="name" value={signerName} onChange={e => setSignerName(e.target.value)} error={errors['signerName']} required />
+            <TextField id="agreements-title" label="Title" autoComplete="organization-title" value={signerTitle} onChange={e => setSignerTitle(e.target.value)} error={errors['signerTitle']} required />
+            {open.map(k => (
+              <div key={k} className="sm:col-span-2 space-y-1">
+                <CheckboxField id={`${k}-agree`} label={`I have read the ${AGREEMENTS[k].title} and agree to it on behalf of the practice.`} checked={agree[k]} onChange={e => setAgree(prev => ({ ...prev, [k]: e.target.checked }))} aria-invalid={errors[`agree-${k}`] ? true : undefined} aria-describedby={errors[`agree-${k}`] ? `${k}-agree-error` : undefined} />
+                {errors[`agree-${k}`] && <p id={`${k}-agree-error`} role="alert" className="text-sm text-red-700">{errors[`agree-${k}`]}</p>}
+              </div>
+            ))}
+          </fieldset>
+          <button type="submit" className={BUTTON_PRIMARY} disabled={busy}>{busy ? 'Recording…' : open.length > 1 ? 'Accept both agreements' : `Accept the ${AGREEMENTS[open[0]!].title}`}</button>
+        </form>
       )}
-    </div>
-  )
-}
-
-// ── Payouts ──────────────────────────────────────────────────
-//
-// Payout setup is not live for onboarding. The step says so, its control
-// is disabled, and it is never required to submit or approve. No payment
-// provider is called from onboarding.
-
-function PayoutsStep({ readOnly, onNext }: { readOnly: boolean; onNext: () => void }) {
-  return (
-    <div className="space-y-5">
-      <p id="payouts-note" className="text-sm text-slate-700">
-        Payouts to the clinic are set up at launch. You do not need to do anything here to submit, and CompoundIQ does not need it to approve your clinic.
-      </p>
-      <button type="button" className={BUTTON_SECONDARY} disabled aria-describedby="payouts-note">
-        Payout setup: available at launch
-      </button>
-      {!readOnly && (
-        <div>
-          <button type="button" className={BUTTON_PRIMARY} onClick={onNext}>Continue</button>
-        </div>
+      {!readOnly && open.length === 0 && (
+        <div><button type="button" className={BUTTON_PRIMARY} onClick={onAccepted}>Continue</button></div>
       )}
     </div>
   )
@@ -540,20 +558,20 @@ function ReviewStep({ state, readOnly, onGo, onSubmitted }: { state: OnboardingS
       <p className="text-sm text-slate-700">Check each step, then submit. CompoundIQ reviews every new clinic before it can send orders.</p>
       {msg && <FormAlert>{msg}</FormAlert>}
       <dl className="divide-y divide-border rounded-lg border border-border">
-        {ONBOARDING_STEPS.filter(s => s !== 'review').map(s => (
+        {WIZARD_STEPS.filter(s => s !== 'review').map(s => (
           <div key={s} className="flex flex-wrap items-center justify-between gap-2 p-3">
-            <dt className="text-sm font-medium text-foreground">{STEP_LABELS[s]}</dt>
+            <dt className="text-sm font-medium text-foreground">{WIZARD_LABELS[s]}</dt>
             <dd className="flex items-center gap-3 text-sm">
-              <span className={state.steps[s] === 'complete' ? 'text-emerald-800' : 'text-slate-700'}>{statusText(s, state.steps[s])}</span>
+              <span className={wizardStatus(state.steps, s) === 'complete' ? 'text-emerald-800' : 'text-slate-700'}>{statusText(s, wizardStatus(state.steps, s))}</span>
               <button type="button" className="text-sm font-medium text-primary underline underline-offset-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onGo(s)}>
-                Open {STEP_LABELS[s]}
+                Open {WIZARD_LABELS[s]}
               </button>
             </dd>
           </div>
         ))}
       </dl>
       {!check.ok && (
-        <FormAlert tone="info">Still to do before you can submit: {check.missing.map(s => STEP_LABELS[s]).join(', ')}.</FormAlert>
+        <FormAlert tone="info">Still to do before you can submit: {[...new Set(check.missing.map(s => WIZARD_LABELS[s]))].join(', ')}.</FormAlert>
       )}
       {!readOnly && (
         <button type="button" className={BUTTON_PRIMARY} onClick={submit} disabled={busy || !check.ok}>
