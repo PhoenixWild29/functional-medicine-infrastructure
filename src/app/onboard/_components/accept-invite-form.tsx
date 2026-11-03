@@ -123,7 +123,7 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
           {busy ? 'Creating your account…' : 'Create account'}
         </button>
         <p className="text-xs text-slate-600">
-          After you sign in you may be asked to set up two-step verification.
+          You go straight into CompoundIQ. This is the only password you set.
         </p>
       </form>
     </section>

@@ -212,6 +212,8 @@ describe('5. submit', () => {
     type('Current medications (optional)', 'Levothyroxine 50 mcg daily')
     await fillHealth()
     expect(screen.getByRole('heading', { level: 2, name: 'Check and submit' })).toHaveFocus()
+    // US date on the check page; the API still gets ISO (below).
+    expect(screen.getByText('04/15/1985')).toBeInTheDocument()
     expect(await violations()).toEqual([])
     await click('Submit')
 

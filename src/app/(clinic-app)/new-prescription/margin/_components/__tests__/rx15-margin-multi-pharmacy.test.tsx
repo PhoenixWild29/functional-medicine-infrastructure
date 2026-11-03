@@ -5,7 +5,7 @@
  * wo102-margin-shipping.test.tsx.
  */
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { PrescriptionSessionProvider } from '../../../_context/prescription-session'
 import { MarginBuilderForm } from '../margin-builder-form'
 import { STANDARD_CLINICAL_DIFFERENCE_OPTIONS, defaultRxDetails, type PackageOption } from '@/lib/orders/rx-details'
@@ -111,5 +111,15 @@ describe('price step: the multi-pharmacy shipping warning (requirement 15)', () 
     await waitFor(() => expect(screen.getByTestId('shipping-line')).toHaveTextContent("upgrades this session's Strive Pharmacy shipment to cold chain"))
     expect(screen.queryByTestId('multi-pharmacy-notice')).not.toBeInTheDocument()
     expect(shippingCalls).toEqual([])
+  })
+
+  it('Review & Send: the page does not show the next count or the shared-shipping note while it leaves (meeting check 2026-11-03)', async () => {
+    renderAtStrive([lineAt('line-quick', 'pharmacy-quick', 'Quick Rx Pharmacy')])
+    const button = await screen.findByRole('button', { name: 'Review & Send (2)' })
+    await waitFor(() => expect(button).toBeEnabled())
+    fireEvent.click(button)
+    expect(await screen.findByRole('status')).toHaveTextContent('Added. Opening the next step…')
+    expect(screen.queryByRole('button', { name: /Review & Send \(3\)/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('shipping-line')).not.toBeInTheDocument()
   })
 })

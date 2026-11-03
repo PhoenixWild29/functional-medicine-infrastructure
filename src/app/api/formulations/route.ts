@@ -31,6 +31,7 @@ import { getUserClinicId } from '@/lib/auth/claims'
 import { withApiErrors } from '@/lib/api/with-api-errors'
 import { z } from 'zod'
 import { MAX_NAME, MAX_SEARCH, UUID_RE, boundedText, parseQuery } from '@/lib/api/input'
+import { ingredientAliases } from '@/lib/catalog/search-aliases'
 
 /** Upper bound on formulation ids per rx_defaults request. */
 const RX_DEFAULTS_MAX_IDS = 50
@@ -92,7 +93,16 @@ async function getHandler(req: NextRequest) {
           .order('common_name')
 
         if (q && q.length >= 2) {
-          query = query.ilike('common_name', `%${q}%`)
+          // A known alias ("LDN") also finds the ingredient it stands for
+          // (Naltrexone). The alias names are fixed catalog names, so the
+          // or-filter is built only from them and a quoted copy of the text.
+          const aliases = ingredientAliases(q)
+          if (aliases.length > 0) {
+            const terms = [q.replace(/[^A-Za-z0-9 +\-./]/g, ''), ...aliases].filter(Boolean)
+            query = query.or(terms.map(t => `common_name.ilike."%${t}%"`).join(','))
+          } else {
+            query = query.ilike('common_name', `%${q}%`)
+          }
         }
         if (category) {
           query = query.eq('therapeutic_category', category)

@@ -73,6 +73,18 @@ describe('GET /api/formulations: query', () => {
     expect(db.to('salt_forms')).toHaveLength(1)
   })
 
+  it('LDN also finds Naltrexone; plain text keeps the plain search', async () => {
+    let res = await get('level=ingredients&q=LDN')
+    expect(res.status).toBe(200)
+    let call = db.to('ingredients')[0]
+    expect(Object.keys(call.filters).join(' ')).toContain('common_name.ilike."%Naltrexone%"')
+    db = scriptedDb(() => ({ data: [] }))
+    res = await get('level=ingredients&q=sema')
+    expect(res.status).toBe(200)
+    call = db.to('ingredients')[0]
+    expect(call.filters['common_name:ilike']).toBe('%sema%')
+  })
+
   it('a short search still lists ingredients', async () => {
     const res = await get('level=ingredients&q=se')
     expect(res.status).toBe(200)
