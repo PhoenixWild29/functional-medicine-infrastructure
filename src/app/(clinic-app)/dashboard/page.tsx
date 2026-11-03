@@ -154,7 +154,10 @@ export default async function DashboardPage(
   const nowDate    = new Date()
   // Prior-year same-month window for trend comparison
   const pyStart    = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), 1)).toISOString()
-  const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth() + 1, 1)).toISOString()
+  // The same days as this month so far (the 1st through today), a year
+  // ago: comparing 3 days of November with all of last November showed a
+  // false decline early every month (review of #287).
+  const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), nowDate.getUTCDate() + 1)).toISOString()
 
   // Fetch clinic (for stripe status gate — REQ-GDB-003) + orders in parallel
   const [clinicResult, ordersResult, priorYearResult] = await Promise.all([
