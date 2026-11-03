@@ -44,6 +44,7 @@ import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib
 import { loadChosenProposals } from '@/lib/proposals/queue'
 import { ChosenPlansQueue } from './_components/chosen-plans-queue'
 import { parseBefore, windowOrders } from '@/lib/dashboard/order-window'
+import { bucketOf } from '@/lib/practice/metrics'
 
 export const metadata = {
   title: 'Dashboard',
@@ -274,11 +275,6 @@ export default async function DashboardPage(
     }
   })
 
-  // Exclude non-revenue statuses (HC-01)
-  const EXCLUDED_FROM_REVENUE = new Set([
-    'DRAFT', 'PAYMENT_EXPIRED', 'CANCELLED', 'REFUNDED', 'REFUND_PENDING',
-  ])
-
   // MTD cards, counted with the same filter as the rows each card opens
   // (?period=mtd): click-through, 14 Oct, a card's number disagreed with
   // the list it opened.
@@ -300,10 +296,12 @@ export default async function DashboardPage(
   const pyRows = priorYearResult.data ?? []
   let priorYearRevenueCents = 0
   let priorYearOrdersMtd    = 0
+  // The same rules as this month's cards (dashboardKpis): every order
+  // counts toward Total Orders; only collected orders are revenue.
   for (const o of pyRows) {
-    if (!EXCLUDED_FROM_REVENUE.has(o.status)) {
+    priorYearOrdersMtd++
+    if (bucketOf(o.status) === 'collected') {
       priorYearRevenueCents += Math.round((o.retail_price_snapshot ?? 0) * 100)
-      priorYearOrdersMtd++
     }
   }
 

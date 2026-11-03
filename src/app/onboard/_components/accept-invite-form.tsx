@@ -122,9 +122,6 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
         <button type="submit" className={`${BUTTON_PRIMARY} w-full`} disabled={busy}>
           {busy ? 'Creating your account…' : 'Create account'}
         </button>
-        <p className="text-xs text-slate-600">
-          You go straight into CompoundIQ. This is the only password you set.
-        </p>
       </form>
     </section>
   )

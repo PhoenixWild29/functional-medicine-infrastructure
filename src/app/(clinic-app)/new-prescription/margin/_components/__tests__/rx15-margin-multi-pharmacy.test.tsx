@@ -10,8 +10,9 @@ import { PrescriptionSessionProvider } from '../../../_context/prescription-sess
 import { MarginBuilderForm } from '../margin-builder-form'
 import { STANDARD_CLINICAL_DIFFERENCE_OPTIONS, defaultRxDetails, type PackageOption } from '@/lib/orders/rx-details'
 
+const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn(), refresh: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: jest.fn(), refresh: jest.fn() }),
 }))
 
 const STORAGE_KEY = 'compoundiq-rx-session'
@@ -53,6 +54,7 @@ function lineAt(id: string, pharmacyId: string, pharmacyName: string) {
 
 const shippingCalls: string[] = []
 beforeEach(() => {
+  mockPush.mockClear()
   sessionStorage.clear()
   shippingCalls.length = 0
   global.fetch = jest.fn(async (input: unknown) => {
@@ -113,13 +115,20 @@ describe('price step: the multi-pharmacy shipping warning (requirement 15)', () 
     expect(shippingCalls).toEqual([])
   })
 
-  it('Review & Send: the page does not show the next count or the shared-shipping note while it leaves (meeting check 2026-11-03)', async () => {
-    renderAtStrive([lineAt('line-quick', 'pharmacy-quick', 'Quick Rx Pharmacy')])
-    const button = await screen.findByRole('button', { name: 'Review & Send (2)' })
+  it.each([
+    ['Review & Send (2)', '/new-prescription/review'],
+    ['Add & Search Another', '/new-prescription/search'],
+  ])('%s: adds the line and leaves without showing the next count or the shared-shipping note (meeting check 2026-11-03)', async (name, path) => {
+    // Same pharmacy as the session line, so the shared-shipping note is on screen before the click.
+    renderAtStrive([lineAt('line-strive', 'pharmacy-strive', 'Strive Pharmacy')])
+    await waitFor(() => expect(screen.getByTestId('shipping-line')).toBeInTheDocument())
+    const button = await screen.findByRole('button', { name })
     await waitFor(() => expect(button).toBeEnabled())
     fireEvent.click(button)
     expect(await screen.findByRole('status')).toHaveTextContent('Added. Opening the next step…')
     expect(screen.queryByRole('button', { name: /Review & Send \(3\)/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId('shipping-line')).not.toBeInTheDocument()
+    expect(mockPush).toHaveBeenCalledWith(path)
+    expect(JSON.parse(sessionStorage.getItem(STORAGE_KEY)!).prescriptions).toHaveLength(2)
   })
 })

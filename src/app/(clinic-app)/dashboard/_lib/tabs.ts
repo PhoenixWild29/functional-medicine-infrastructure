@@ -96,8 +96,6 @@ export function ordersForView<T extends ViewOrder>(orders: ReadonlyArray<T>, tab
     (def.proposed === undefined || isProposedOrder(o) === def.proposed))
 }
 
-// Not revenue: never charged, or the charge was returned (HC-01).
-
 /** The month-to-date cards, counted with the same filter as the rows they open. */
 export function dashboardKpis<T extends ViewOrder & { retailCents: number }>(orders: ReadonlyArray<T>, now: number = Date.now()): {
   totalOrdersMtd: number
