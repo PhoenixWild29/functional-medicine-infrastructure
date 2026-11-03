@@ -2981,7 +2981,7 @@ test.describe('Clinic App — WO-99 batch sign', { tag: '@serial' }, () => {
 
     // A single dot is not a signature.
     const send = page.getByRole('button', { name: 'Sign & Send 2 Prescriptions' })
-    await expect(page.getByTestId('send-blocked-reason')).toHaveText('Sign in the signature box below to enable sending.', { timeout: 15_000 })
+    await expect(page.getByTestId('send-blocked-reason')).toHaveText('Sign in the signature box above to enable sending.', { timeout: 15_000 })
     await drawDot(page)
     await expect(page.getByTestId('send-blocked-reason')).toHaveText(/at least 3 strokes/)
     await expect(send).toBeDisabled()

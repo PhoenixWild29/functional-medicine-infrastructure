@@ -75,6 +75,17 @@ describe('the numbers and the rows come from one filter', () => {
     expect(rows.map(o => o.orderId).sort()).toEqual(['oct-deliv', 'oct-ship'])
   })
 
+  it('Revenue (month to date) counts collected orders only: an open payment link is not revenue (meeting check 2026-11-03)', () => {
+    const mix = [
+      order('paid', 'PAID_PROCESSING', THIS_MONTH),
+      order('open-link', 'AWAITING_PAYMENT', THIS_MONTH),
+      order('failed-pay', 'ERROR_PAYMENT_FAILED', THIS_MONTH),
+      order('draft', 'DRAFT', THIS_MONTH),
+      order('shipped', 'SHIPPED', THIS_MONTH),
+    ]
+    expect(dashboardKpis(mix, NOW.getTime()).revenueMtdCents).toBe(20000)
+  })
+
   it('the month starts at 00:00 UTC on the 1st, as the server counts it', () => {
     expect(monthToDateStart(Date.UTC(2026, 9, 14, 3))).toBe('2026-10-01T00:00:00.000Z')
   })

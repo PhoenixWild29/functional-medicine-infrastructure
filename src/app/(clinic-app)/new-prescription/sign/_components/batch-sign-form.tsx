@@ -87,6 +87,12 @@ interface Props {
   proposal?:      { proposalId: string; summary: string }
 }
 
+/** 1982-07-24 → 07/24/1982, as the patient list shows it. Anything else as is. */
+function usDob(iso: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '')
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : (iso ?? '')
+}
+
 export function BatchSignForm({ patients, preselected, signer, rates, absorbShipping, proposal }: Props) {
   const router = useRouter()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
@@ -241,7 +247,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
     // Compliance C6: a controlled line is never signed here, even if the
     // check named no problem for it.
     else if (controlledSelected.length > 0) blocked = `${controlledSelected[0]!.medicationName}: ${CONTROLLED_LABEL}. Deselect it to sign the rest.`
-    else if (!signature) blocked = 'Sign in the signature box below to enable sending.'
+    else if (!signature) blocked = 'Sign in the signature box above to enable sending.'
     else if (!signature.ok) blocked = SIGNATURE_REJECTION_COPY[signature.reason]
   }
   const canSend = blocked === null && !submitting
@@ -382,7 +388,7 @@ export function BatchSignForm({ patients, preselected, signer, rates, absorbShip
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Patient</p>
                 <p className="text-sm font-semibold text-foreground">{nameOf(p)}</p>
-                <p className="text-xs text-muted-foreground">DOB: {p.dob}, {p.state}, {p.phone || 'no phone'}</p>
+                <p className="text-xs text-muted-foreground">DOB: {usDob(p.dob)}, {p.state}, {p.phone || 'no phone'}</p>
               </div>
               <AllergyChip patient={allergyPatient} loading={state.state === 'loading'} />
             </div>

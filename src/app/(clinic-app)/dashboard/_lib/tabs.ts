@@ -9,6 +9,7 @@
 // rendering. Guarded by src/__tests__/server-client-boundary-static-guard.test.ts.
 
 import type { OrderStatusEnum } from '@/types/database.types'
+import { bucketOf } from '@/lib/practice/metrics'
 
 export type TabId = 'all' | 'drafts' | 'proposed' | 'awaiting_payment' | 'submitting' | 'processing' | 'shipped' | 'errors'
 
@@ -96,7 +97,6 @@ export function ordersForView<T extends ViewOrder>(orders: ReadonlyArray<T>, tab
 }
 
 // Not revenue: never charged, or the charge was returned (HC-01).
-const EXCLUDED_FROM_REVENUE: ReadonlySet<string> = new Set(['DRAFT', 'PAYMENT_EXPIRED', 'CANCELLED', 'REFUNDED', 'REFUND_PENDING'])
 
 /** The month-to-date cards, counted with the same filter as the rows they open. */
 export function dashboardKpis<T extends ViewOrder & { retailCents: number }>(orders: ReadonlyArray<T>, now: number = Date.now()): {
@@ -107,7 +107,10 @@ export function dashboardKpis<T extends ViewOrder & { retailCents: number }>(ord
   const mtd = ordersForView(orders, 'all', 'mtd', now)
   return {
     totalOrdersMtd:  mtd.length,
-    revenueMtdCents: mtd.filter(o => !EXCLUDED_FROM_REVENUE.has(o.status)).reduce((s, o) => s + o.retailCents, 0),
+    // Collected only, the same rule as the Practice dashboard (bucketOf):
+    // an open payment link is not revenue yet. It counted until 2026-11-03,
+    // so signing a plan showed revenue the patient had not paid.
+    revenueMtdCents: mtd.filter(o => bucketOf(o.status) === 'collected').reduce((s, o) => s + o.retailCents, 0),
     shippedMtd:      ordersForView(orders, 'shipped', 'mtd', now).length,
   }
 }
