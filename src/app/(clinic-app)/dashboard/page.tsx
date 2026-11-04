@@ -44,6 +44,7 @@ import { PROPOSAL_EMBED, dashboardProposal, type DashboardProposal } from '@/lib
 import { loadChosenProposals } from '@/lib/proposals/queue'
 import { ChosenPlansQueue } from './_components/chosen-plans-queue'
 import { parseBefore, windowOrders } from '@/lib/dashboard/order-window'
+import { bucketOf } from '@/lib/practice/metrics'
 
 export const metadata = {
   title: 'Dashboard',
@@ -153,7 +154,10 @@ export default async function DashboardPage(
   const nowDate    = new Date()
   // Prior-year same-month window for trend comparison
   const pyStart    = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), 1)).toISOString()
-  const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth() + 1, 1)).toISOString()
+  // The same days as this month so far (the 1st through today), a year
+  // ago: comparing 3 days of November with all of last November showed a
+  // false decline early every month (review of #287).
+  const pyEnd      = new Date(Date.UTC(nowDate.getUTCFullYear() - 1, nowDate.getUTCMonth(), nowDate.getUTCDate() + 1)).toISOString()
 
   // Fetch clinic (for stripe status gate — REQ-GDB-003) + orders in parallel
   const [clinicResult, ordersResult, priorYearResult] = await Promise.all([
@@ -274,11 +278,6 @@ export default async function DashboardPage(
     }
   })
 
-  // Exclude non-revenue statuses (HC-01)
-  const EXCLUDED_FROM_REVENUE = new Set([
-    'DRAFT', 'PAYMENT_EXPIRED', 'CANCELLED', 'REFUNDED', 'REFUND_PENDING',
-  ])
-
   // MTD cards, counted with the same filter as the rows each card opens
   // (?period=mtd): click-through, 14 Oct, a card's number disagreed with
   // the list it opened.
@@ -300,10 +299,12 @@ export default async function DashboardPage(
   const pyRows = priorYearResult.data ?? []
   let priorYearRevenueCents = 0
   let priorYearOrdersMtd    = 0
+  // The same rules as this month's cards (dashboardKpis): every order
+  // counts toward Total Orders; only collected orders are revenue.
   for (const o of pyRows) {
-    if (!EXCLUDED_FROM_REVENUE.has(o.status)) {
+    priorYearOrdersMtd++
+    if (bucketOf(o.status) === 'collected') {
       priorYearRevenueCents += Math.round((o.retail_price_snapshot ?? 0) * 100)
-      priorYearOrdersMtd++
     }
   }
 

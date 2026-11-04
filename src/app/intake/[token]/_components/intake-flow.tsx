@@ -112,6 +112,12 @@ const primaryButton =
 const secondaryButton =
   'min-h-[44px] w-full rounded-lg border border-slate-500 px-4 py-2 text-base font-medium text-foreground hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
+/** 1985-05-05 → 05/05/1985, as the clinic sees it. Anything else as typed. */
+function usDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso
+}
+
 export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: string; clinicName: string; variant?: 'link' | 'signup' }) {
   const signup = variant === 'signup'
   const uid = useId()
@@ -450,7 +456,7 @@ export function IntakeFlow({ token, clinicName, variant = 'link' }: { token: str
             <dl className="space-y-3 wrap-break-word rounded-lg border border-border p-3 text-base">
               <div><dt className="text-sm text-muted-foreground">Name</dt><dd className="text-foreground">{a.firstName} {a.lastName}</dd></div>
               {signup && <div><dt className="text-sm text-muted-foreground">Mobile number</dt><dd className="text-foreground">{a.mobile.trim()}</dd></div>}
-              <div><dt className="text-sm text-muted-foreground">Date of birth</dt><dd className="text-foreground">{a.dateOfBirth}</dd></div>
+              <div><dt className="text-sm text-muted-foreground">Date of birth</dt><dd className="text-foreground">{usDate(a.dateOfBirth)}</dd></div>
               <div>
                 <dt className="text-sm text-muted-foreground">Shipping address</dt>
                 <dd className="text-foreground">{a.line1}{a.line2 ? `, ${a.line2}` : ''}, {a.city}, {a.state} {a.zip}</dd>

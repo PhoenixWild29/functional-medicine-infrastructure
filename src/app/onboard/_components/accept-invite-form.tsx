@@ -122,9 +122,6 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
         <button type="submit" className={`${BUTTON_PRIMARY} w-full`} disabled={busy}>
           {busy ? 'Creating your account…' : 'Create account'}
         </button>
-        <p className="text-xs text-slate-600">
-          After you sign in you may be asked to set up two-step verification.
-        </p>
       </form>
     </section>
   )

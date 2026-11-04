@@ -285,6 +285,12 @@ function MarginBuilderFormForLine({
   // WO-83: Pre-fill sig from cascading builder if available. Declared
   // before the derivation: the duration the provider picked lives in it.
   const [sigText, setSigText] = useState(presetSigText ?? '')
+  // Set when this line is added and the page is moving on (to Review &
+  // Send or the next search). Adding it updates the session count and the
+  // shared-shipping note at once, so without this the page showed
+  // "Review & Send (3)" and "$0.00, ships with the other..." for a moment
+  // before it left (meeting check 2026-11-03).
+  const [leaving, setLeaving] = useState(false)
 
   // ── WO-96: derived days supply + dispense ─────────────────────
   // WO-96 fix: days supply = the selected duration; dispense = doses in
@@ -711,6 +717,8 @@ function MarginBuilderFormForLine({
 
   function handleAddAnother(e: React.MouseEvent) {
     e.preventDefault()
+    if (!canContinue) return
+    setLeaving(true)
     addToSession()
     router.push('/new-prescription/search')
   }
@@ -797,6 +805,8 @@ function MarginBuilderFormForLine({
       return
     }
 
+    if (!canContinue) return
+    setLeaving(true)
     addToSession()
     router.push('/new-prescription/review')
   }
@@ -898,6 +908,14 @@ function MarginBuilderFormForLine({
       setDraftError(msg)
       setIsSavingDraft(false)
     }
+  }
+
+  if (leaving) {
+    return (
+      <p role="status" className="py-8 text-center text-sm text-muted-foreground">
+        Added. Opening the next step…
+      </p>
+    )
   }
 
   return (
