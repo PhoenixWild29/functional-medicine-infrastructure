@@ -37,9 +37,11 @@ const FAVORITE = {
 
 const json = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) })
 let pharmacyUrls: string[] = []
+let pharmacyResponse: () => Promise<unknown> = () => json({ data: [] })
 
 beforeEach(() => {
   pharmacyUrls = []
+  pharmacyResponse = () => json({ data: [] })
   global.fetch = jest.fn((input: unknown) => {
     const url = String(input)
     if (url.startsWith('/api/favorites/frequent')) return json({ data: [] })
@@ -49,7 +51,7 @@ beforeEach(() => {
     if (url.includes('level=formulation&')) return json({ data: { formulation: FORMULATION, salt_form: SALT_FORM, ingredient: SEMA } })
     if (url.includes('level=formulations')) return json({ data: [FORMULATION] })
     if (url.includes('level=salt_forms')) return json({ data: [SALT_FORM] })
-    if (url.includes('level=pharmacy_options')) { pharmacyUrls.push(url); return json({ data: [] }) }
+    if (url.includes('level=pharmacy_options')) { pharmacyUrls.push(url); return pharmacyResponse() }
     if (url.includes('level=')) return json({ data: [] })
     throw new Error(`Unexpected fetch: ${url}`)
   }) as unknown as typeof fetch
@@ -79,7 +81,43 @@ it('a patient in a state no pharmacy is licensed for: says so, names the state, 
   renderBuilder('PA')
   await openFormulation()
   expect(await screen.findByTestId('no-pharmacy-options')).toHaveTextContent(
-    'No pharmacy on CompoundIQ is licensed to fill Semaglutide Injectable 5 mg/mL for a patient in PA yet.')
+    'No pharmacy on CompoundIQ can fill Semaglutide Injectable 5 mg/mL for a patient in PA yet.')
   expect(pharmacyUrls.some(u => u.includes('state=PA'))).toBe(true)
   expect(screen.queryByText('Pharmacy & Pricing')).not.toBeInTheDocument()
+})
+
+it('no patient state: says no pharmacy offers it', async () => {
+  renderBuilder(null)
+  await openFormulation()
+  expect(await screen.findByTestId('no-pharmacy-options')).toHaveTextContent('No pharmacy on CompoundIQ offers Semaglutide Injectable 5 mg/mL yet.')
+})
+
+it('nothing shows while the pharmacies are still loading', async () => {
+  pharmacyResponse = () => new Promise(() => {})
+  renderBuilder('PA')
+  await openFormulation()
+  await new Promise(r => setTimeout(r, 300))
+  expect(pharmacyUrls.length).toBeGreaterThan(0)
+  expect(screen.queryByTestId('no-pharmacy-options')).not.toBeInTheDocument()
+  expect(screen.queryByTestId('pharmacy-options-error')).not.toBeInTheDocument()
+})
+
+it('a failed load says so with Try again, instead of a blank', async () => {
+  pharmacyResponse = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'x' }) })
+  renderBuilder('PA')
+  await openFormulation()
+  expect(await screen.findByTestId('pharmacy-options-error')).toHaveTextContent('Pharmacies could not be loaded.')
+  expect(screen.queryByTestId('no-pharmacy-options')).not.toBeInTheDocument()
+})
+
+it('pharmacies found: no message', async () => {
+  pharmacyResponse = () => json({ data: [{
+    pharmacy_formulation_id: 'pf-sema', wholesale_price: 95, estimated_turnaround_days: 5,
+    pharmacies: { pharmacy_id: 'pharmacy-strive', name: 'Strive Pharmacy', slug: 'strive', integration_tier: 'TIER_4_FAX', fax_number: null, supports_real_time_status: false },
+    packages: [{ id: 'pkg-1', label: '1 mL vial', qty: 1, unit: 'mL', wholesalePrice: 95, isDefault: true }],
+  }] })
+  renderBuilder('TX')
+  await openFormulation()
+  expect(await screen.findByText('Pharmacy & Pricing')).toBeInTheDocument()
+  expect(screen.queryByTestId('no-pharmacy-options')).not.toBeInTheDocument()
 })

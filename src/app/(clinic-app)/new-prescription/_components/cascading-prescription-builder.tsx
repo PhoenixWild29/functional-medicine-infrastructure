@@ -285,7 +285,7 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
     enabled: !!selectedSaltForm || !!selectedIngredient,
   })
 
-  const { data: pharmacyOptions = [], isSuccess: pharmacyOptionsLoaded } = useQuery({
+  const { data: pharmacyOptions = [], isSuccess: pharmacyOptionsLoaded, isError: pharmacyOptionsFailed, refetch: refetchPharmacyOptions } = useQuery({
     queryKey: ['formulation-pharmacies', selectedFormulation?.formulation_id, session.patient?.state],
     queryFn: () => fetchLevel<PharmacyOption>('pharmacy_options', {
       formulation_id: selectedFormulation!.formulation_id,
@@ -917,8 +917,14 @@ export function CascadingPrescriptionBuilder({ editTarget = null, initial = null
       {selectedFormulation && pharmacyOptionsLoaded && pharmacyOptions.length === 0 && (
         <div role="status" data-testid="no-pharmacy-options" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           {session.patient?.state
-            ? `No pharmacy on CompoundIQ is licensed to fill ${selectedFormulation.name} for a patient in ${session.patient.state} yet. Choose another formulation, or contact CompoundIQ to add a pharmacy for ${session.patient.state}.`
+            ? `No pharmacy on CompoundIQ can fill ${selectedFormulation.name} for a patient in ${session.patient.state} yet. Choose another formulation, or contact CompoundIQ.`
             : `No pharmacy on CompoundIQ offers ${selectedFormulation.name} yet. Choose another formulation.`}
+        </div>
+      )}
+      {selectedFormulation && pharmacyOptionsFailed && (
+        <div role="alert" data-testid="pharmacy-options-error" className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+          Pharmacies could not be loaded.{' '}
+          <button type="button" onClick={() => { void refetchPharmacyOptions() }} className="font-medium underline">Try again</button>
         </div>
       )}
 
