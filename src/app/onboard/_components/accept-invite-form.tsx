@@ -14,6 +14,7 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { clearSignedInTabState } from '@/lib/client-state/clear'
 import { navigateFully, sameOriginPath } from '@/lib/auth/full-navigation'
 import { TextField, FormAlert, BUTTON_PRIMARY } from '@/components/onboarding/fields'
 import type { InviteKind, InviteStatus } from '@/lib/onboarding/tokens'
@@ -90,6 +91,7 @@ export function AcceptInviteForm({ token, kind, clinicName, email, status, invit
         return
       }
       const supabase = createBrowserClient()
+      clearSignedInTabState()
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) {
         router.push('/login?redirectTo=' + encodeURIComponent(data.next ?? '/'))

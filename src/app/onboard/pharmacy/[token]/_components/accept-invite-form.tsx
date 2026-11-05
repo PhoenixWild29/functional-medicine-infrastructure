@@ -12,6 +12,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { clearSignedInTabState } from '@/lib/client-state/clear'
 import { navigateFully } from '@/lib/auth/full-navigation'
 import { FormAlert, PrimaryButton, TextField, fieldErrors, sendJson } from '@/components/pharmacy-onboarding/fields'
 
@@ -48,6 +49,7 @@ export function AcceptInviteForm({ token, pharmacyName, adminEmail }: { token: s
       setMessage(typeof res.data['error'] === 'string' ? res.data['error'] : 'Your account could not be created. Try again.')
       return
     }
+    clearSignedInTabState()
     const { error } = await createBrowserClient().auth.signInWithPassword({ email: adminEmail, password })
     if (error) {
       setBusy(false)

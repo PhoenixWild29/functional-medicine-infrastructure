@@ -23,6 +23,7 @@ import { createContext, useContext, useState, useCallback, useEffect, type React
 import type { RxDetails, RxRules } from '@/lib/orders/rx-details'
 import type { SigMode, TitrationStep } from '@/lib/orders/titration'
 import type { CycleSchedule } from '@/lib/orders/cycling'
+import { RX_SESSION_STORAGE_KEY } from '@/lib/client-state/clear'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -280,7 +281,7 @@ interface PrescriptionSessionContextValue extends PrescriptionSessionState {
 
 // ── Storage key ───────────────────────────────────────────────
 
-const STORAGE_KEY = 'compoundiq-rx-session'
+const STORAGE_KEY = RX_SESSION_STORAGE_KEY
 
 function generateId(): string {
   // crypto.randomUUID is available in every browser we support, but not
