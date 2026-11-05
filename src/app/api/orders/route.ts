@@ -281,7 +281,7 @@ async function postHandler(request: NextRequest): Promise<NextResponse> {
 
   if (clinic.order_intake_blocked || clinic.stripe_connect_status !== 'ACTIVE') {
     return NextResponse.json(
-      { error: 'Order intake is blocked. Complete Stripe onboarding in Settings' },
+      { error: 'Ordering opens at launch, once payouts are set up. CompoundIQ will contact you.' },
       { status: 422 }
     )
   }
