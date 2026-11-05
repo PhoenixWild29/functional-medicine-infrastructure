@@ -1566,9 +1566,14 @@ export function BatchReviewForm({ isProvider, proposalRole = null, signBlockedRe
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-muted/30 p-4">
             {signBlockedReason ? (
-              <p className="text-sm font-medium text-foreground" data-testid="sign-blocked-reason">
-                {signBlockedReason}
-              </p>
+              <>
+                <p className="text-sm font-medium text-foreground" data-testid="sign-blocked-reason">
+                  {signBlockedReason}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save it as a draft now. You can sign it from the dashboard Drafts tab once your NPI is verified.
+                </p>
+              </>
             ) : (
               <>
                 <p className="text-sm font-medium text-foreground">
