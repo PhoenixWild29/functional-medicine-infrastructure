@@ -18,6 +18,7 @@
 import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { clearSignedInTabState } from '@/lib/client-state/clear'
 import { navigateFully, sameOriginPath } from '@/lib/auth/full-navigation'
 import { TextField, SelectField, FormAlert, BUTTON_PRIMARY, BUTTON_SECONDARY } from '@/components/onboarding/fields'
 import { US_STATES } from '@/lib/geo/us-states'
@@ -110,6 +111,7 @@ export function GetStartedForm() {
       }
       const next = data.next ?? '/'
       const supabase = createBrowserClient()
+      clearSignedInTabState()
       const { error } = await supabase.auth.signInWithPassword({ email: data.email ?? email.trim(), password })
       if (error) {
         router.push('/login?redirectTo=' + encodeURIComponent(next))

@@ -39,3 +39,7 @@ In the Supabase dashboard: **Authentication → Sessions**, and **Authentication
 1. Sign in on a test account, close the tab, wait 31 minutes, and open the app. It should ask for sign-in.
 2. With a session open and active, sign-in should be asked again 12 hours after the original sign-in.
 3. In **Authentication → Users**, the user's sessions should show as ended.
+
+## Prescriptions in progress
+
+A prescription being built (patient, provider and lines, kept in the tab for reloads) is cleared when the login ends: sign-out, idle logoff, or opening the sign-in page, and before a new login starts from an invite or Get started (Nov 5, 2026: a line from one clinic appeared on another user's Review page). A user who is logged off mid-prescription starts it again after signing in.

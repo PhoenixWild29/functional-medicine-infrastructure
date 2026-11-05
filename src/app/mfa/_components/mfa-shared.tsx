@@ -4,6 +4,7 @@
 
 import { useState } from 'react'
 import { createBrowserClient } from '@/lib/supabase/client'
+import { clearSignedInTabState } from '@/lib/client-state/clear'
 import { redirectToLogin } from '@/lib/auth/redirect-to-login'
 
 export function MfaCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -68,7 +69,7 @@ export function SignOutLink() {
   return (
     <button
       type="button"
-      onClick={async () => { await supabase.auth.signOut(); redirectToLogin() }}
+      onClick={async () => { clearSignedInTabState(); await supabase.auth.signOut(); redirectToLogin() }}
       className="rounded-sm text-xs text-muted-foreground underline-offset-2 hover:underline focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       Sign out

@@ -31,3 +31,17 @@ it('the key matches the one the prescription session uses', () => {
 it('clearing with nothing stored is harmless', () => {
   expect(() => clearSignedInTabState()).not.toThrow()
 })
+
+it('every place that starts or ends a login in the browser clears the tab first (source guard)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { readFileSync } = require('fs') as typeof import('fs')
+  const files = [
+    'src/app/onboard/_components/accept-invite-form.tsx',
+    'src/app/onboard/pharmacy/[token]/_components/accept-invite-form.tsx',
+    'src/app/get-started/_components/get-started-form.tsx',
+    'src/app/mfa/_components/mfa-shared.tsx',
+    'src/app/login/page.tsx',
+    'src/lib/supabase/sign-out.ts',
+  ]
+  for (const f of files) expect([f, readFileSync(f, 'utf8').includes('clearSignedInTabState()')]).toEqual([f, true])
+})
