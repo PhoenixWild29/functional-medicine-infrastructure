@@ -18,7 +18,7 @@ import { BatchReviewForm } from './_components/batch-review-form'
 import { getWizardSteps } from '../_lib/wizard-steps'
 import { getUserClinicId, getUserRole } from '@/lib/auth/claims'
 import { createServiceClient } from '@/lib/supabase/service'
-import { resolveSigner } from '@/lib/auth/signer'
+import { resolveSigner, SIGNER_COPY } from '@/lib/auth/signer'
 
 export const metadata = {
   title: 'New Prescription: Review & Send',
@@ -58,6 +58,9 @@ export default async function ReviewPage() {
     ? await resolveSigner(createServiceClient(), { userId: user.id, clinicId, role: appRole ?? null })
     : null
   const isProvider = signer?.ok === true
+  // The prescriber's own NPI is not verified yet: say that, not "only the
+  // assigned provider can sign".
+  const signBlockedReason = signer && !signer.ok && signer.message === SIGNER_COPY.unverified ? signer.message : null
 
   // WO-100: a provider's step 1 is just "Patient" — they are the provider.
   const WIZARD_STEPS = getWizardSteps({
@@ -85,6 +88,7 @@ export default async function ReviewPage() {
 
         <BatchReviewForm
           isProvider={isProvider}
+          signBlockedReason={signBlockedReason}
           proposalRole={appRole === 'medical_assistant' ? 'prepare' : appRole === 'provider' || appRole === 'clinic_admin' ? 'send' : null}
         />
       </main>

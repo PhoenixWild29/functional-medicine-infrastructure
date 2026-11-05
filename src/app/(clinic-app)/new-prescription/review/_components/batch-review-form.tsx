@@ -304,11 +304,18 @@ interface Props {
    * null (no plan option). The server decides again (lib/proposals/propose).
    */
   proposalRole?: 'send' | 'prepare' | null
+  /**
+   * Set when this user is the prescriber but cannot sign yet (a solo
+   * clinic admin whose NPI has not passed the registry check). Shown
+   * instead of "Only the assigned provider can sign", which read as if
+   * someone else had to sign (Gina-style run, 2026-11-05).
+   */
+  signBlockedReason?: string | null
 }
 
 // ── Component ─────────────────────────────────────────────────
 
-export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
+export function BatchReviewForm({ isProvider, proposalRole = null, signBlockedReason = null }: Props) {
   const router = useRouter()
   const session = usePrescriptionSession()
   const sigCanvasRef = useRef<SignatureCanvas>(null)
@@ -1558,14 +1565,22 @@ export function BatchReviewForm({ isProvider, proposalRole = null }: Props) {
       {!isProvider && (
         <div className="space-y-3">
           <div className="rounded-lg border border-border bg-muted/30 p-4">
-            <p className="text-sm font-medium text-foreground">
-              Only the assigned provider can sign and send.
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Save {prescriptions.length > 1 ? 'these prescriptions' : 'this prescription'} as a draft for
-              provider review. {provider.first_name} {provider.last_name} can sign from the dashboard Drafts
-              tab, which sends the payment link.
-            </p>
+            {signBlockedReason ? (
+              <p className="text-sm font-medium text-foreground" data-testid="sign-blocked-reason">
+                {signBlockedReason}
+              </p>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-foreground">
+                  Only the assigned provider can sign and send.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Save {prescriptions.length > 1 ? 'these prescriptions' : 'this prescription'} as a draft for
+                  provider review. {provider.first_name} {provider.last_name} can sign from the dashboard Drafts
+                  tab, which sends the payment link.
+                </p>
+              </>
+            )}
           </div>
 
           <button
