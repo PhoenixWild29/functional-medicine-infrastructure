@@ -16,6 +16,7 @@ import { navigateFully } from '@/lib/auth/full-navigation'
 import { ACCOUNT_DEACTIVATED_MESSAGE } from '@/lib/auth/claims'
 import Link from 'next/link'
 import { LegalFooter } from '@/components/legal/legal-footer'
+import { clearSignedInTabState } from '@/lib/client-state/clear'
 
 // B11: notices after a password flow, shown as a status (not an error).
 const LOGIN_NOTICES: Record<string, string> = {
@@ -54,6 +55,10 @@ function LoginForm() {
   // The form is server-rendered: an email and password typed or autofilled
   // before React hydrates are in the inputs but not in state, which would
   // leave "Sign in" disabled. Take them from the inputs once hydrated.
+  // The sign-in page starts a new login in this tab: drop the previous
+  // login's prescription session (lib/client-state/clear).
+  useEffect(() => { clearSignedInTabState() }, [])
+
   const emailRef = useRef<HTMLInputElement>(null)
   const passwordRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
